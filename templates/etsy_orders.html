@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đơn Etsy · AppMail</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/etsy-orders.css?v=5">
+    <script src="/static/js/shared-ui-theme-toast-fetch-helpers.js?v=5"></script>
+</head>
+<body>
+<div class="app">
+    {% set active = 'etsy' %}
+    {% include '_app_sidebar.html' %}
+
+    <main class="app-main" id="main">
+        <div class="page-head">
+            <div>
+                <h1>Đơn Etsy</h1>
+                <p class="page-sub" id="head-summary" aria-live="polite"><span class="live"></span>Đang tải…</p>
+            </div>
+            <div class="actions">
+                <span class="job-status" id="job-status" aria-live="polite"></span>
+                <button class="btn ghost" id="btn-manage" type="button" aria-expanded="false" aria-controls="manage-panel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+                    Tuỳ chọn</button>
+                <button class="btn" id="btn-sync" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 9v12"/></svg>
+                    Ghi lên Sheet</button>
+                <button class="btn primary" id="btn-poll" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></svg>
+                    Poll Gmail</button>
+            </div>
+        </div>
+
+        <!-- Poll options, Gmail query, per-account settings -->
+        <section class="card manage-panel" id="manage-panel" hidden aria-label="Tuỳ chọn">
+            <div class="manage-row">
+                <span class="label">Khoảng ngày cho Poll Gmail</span>
+                <div class="date-range">
+                    <input id="poll-from-date" class="field" type="date" aria-label="Poll từ ngày">
+                    <span>đến</span>
+                    <input id="poll-to-date" class="field" type="date" aria-label="Poll đến ngày">
+                </div>
+                <span class="helper">Để trống = poll mọi email khớp query.</span>
+            </div>
+            <div class="manage-row" id="query-row" hidden>
+                <label class="label" for="query-input">Gmail query</label>
+                <input type="text" id="query-input" class="field mono" placeholder="Gmail search query">
+                <button class="btn small primary" id="btn-save-query" type="button">Lưu query</button>
+            </div>
+            <div class="acc-list" id="acc-list"></div>
+        </section>
+
+        <!-- Filters -->
+        <section class="filter-bar" aria-label="Bộ lọc">
+            <div class="search-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="search" id="search-input" class="field" placeholder="Tìm Order ID, buyer, SKU, tên sản phẩm, địa chỉ" aria-label="Tìm đơn hàng" autocomplete="off">
+                <kbd aria-hidden="true">/</kbd>
+            </div>
+            <div class="date-range">
+                <input id="from-date" class="field" type="date" aria-label="Lọc từ ngày email">
+                <span>đến</span>
+                <input id="to-date" class="field" type="date" aria-label="Lọc đến ngày email">
+            </div>
+            <select id="buyer-select" class="field buyer-select" aria-label="Lọc theo buyer">
+                <option value="">Tất cả buyer</option>
+            </select>
+        </section>
+        <div class="filter-summary" id="filter-summary" aria-live="polite"></div>
+
+        <div class="table-wrap card" id="table-wrap">
+            <table class="data-table orders-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" class="cb" id="select-all-cb" aria-label="Chọn tất cả đơn đang lọc"></th>
+                        <th>Ảnh</th>
+                        <th>Order ID</th>
+                        <th>Ngày email</th>
+                        <th>Buyer</th>
+                        <th>Sản phẩm</th>
+                        <th class="num">SL</th>
+                        <th>Giao tới</th>
+                        <th>Sheet</th>
+                    </tr>
+                </thead>
+                <tbody id="orders-tbody"></tbody>
+            </table>
+            <div class="empty-state" id="empty-state" hidden></div>
+        </div>
+
+        <div class="pager" id="pager"></div>
+
+        <details class="card log-panel" id="log-panel">
+            <summary>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                Nhật ký
+                <span class="last-error" id="log-last-error"></span>
+                <button class="btn ghost small" id="btn-clear-logs" type="button">Xoá nhật ký</button>
+            </summary>
+            <div class="log-box" id="log-box"></div>
+        </details>
+
+        <div class="select-bar" id="select-bar" role="region" aria-label="Thao tác với đơn đã chọn">
+            <b class="count" id="select-count">0 đơn đã chọn</b>
+            <button type="button" id="btn-select-all">Chọn tất cả đơn đang lọc</button>
+            <button type="button" id="btn-clear-selection">Bỏ chọn</button>
+            <button type="button" class="delete" id="btn-delete-selected">Xoá đã chọn</button>
+        </div>
+    </main>
+</div>
+
+<aside class="drawer" id="order-drawer" aria-label="Chi tiết đơn" aria-hidden="true" inert></aside>
+
+<script src="/static/js/app-sidebar-accounts-and-mobile-menu.js?v=5"></script>
+<script src="/static/js/etsy-orders-data-normalize-and-filter.js?v=6"></script>
+<script src="/static/js/etsy-orders-table-html-builders.js?v=5"></script>
+<script src="/static/js/etsy-order-detail-drawer.js?v=5"></script>
+<script src="/static/js/etsy-orders-page-render-and-actions.js?v=6"></script>
+</body>
+</html>

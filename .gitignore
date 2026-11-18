@@ -1,0 +1,34 @@
+credentials.json
+tokens/
+processed/
+logs/
+__pycache__/
+*.pyc
+.env
+.gitnexus
+# Local runtime data (lives in the Docker volume; may contain customer PII)
+backup/
+etsy/
+config.yaml
+*.bak
+*.corrupt-*
+
+# AI assistant / agent files (local only, never published)
+.claude/
+.cursor/
+.windsurf/
+.gemini/
+.codex/
+.aider*
+.continue/
+.copilot/
+.github/copilot-instructions.md
+.mcp.json
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.cursorrules
+.windsurfrules
+docs/superpowers/
+plans/

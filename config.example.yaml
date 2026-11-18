@@ -1,0 +1,11 @@
+# Example only. The real config lives in the Docker volume at /data/config.yaml
+# and is edited from the dashboard.
+accounts:
+- email: you@gmail.com
+  etsy_polling_enabled: true
+  etsy_query: (subject:"You made a sale on Etsy" OR subject:"Etsy Order confirmation for") -label:processed
+  polling_enabled: true
+  sheet_id: YOUR_SHEET_ID
+  sheet_tab: Sheet1
+  token_file: tokens/token_you.json
+etsy_polling_interval_minutes: 10

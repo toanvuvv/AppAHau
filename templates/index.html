@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tổng quan · AppMail</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/dashboard.css?v=6">
+    <script src="/static/js/shared-ui-theme-toast-fetch-helpers.js?v=5"></script>
+</head>
+<body>
+<div class="app">
+    {% set active = 'dash' %}
+    {% include '_app_sidebar.html' %}
+
+    <main class="app-main">
+
+        <!-- ===== Overview ===== -->
+        <section id="view-overview" class="view" aria-labelledby="overview-title">
+            <div class="page-head">
+                <div>
+                    <h1 id="overview-title">Tổng quan</h1>
+                    <p class="page-sub"><span class="live" id="run-dot"></span><span id="run-text">Đang tải…</span></p>
+                </div>
+                <div class="actions">
+                    <a href="/api/auth/new" class="btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        Thêm tài khoản Gmail</a>
+                    <a href="/etsy" class="btn primary">Xem đơn Etsy</a>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat"><div class="k">Email hôm nay</div><div class="v" id="today-count">–</div><div class="d">đã ghi lên Sheet</div></div>
+                <div class="stat"><div class="k">Tổng email đã xử lý</div><div class="v" id="total-count">–</div><div class="d">mọi tài khoản</div></div>
+                <div class="stat"><div class="k">Đơn Etsy đang lưu</div><div class="v" id="orders-count">–</div><div class="d" id="orders-sub">&nbsp;</div></div>
+                <div class="stat"><div class="k">Thời gian chạy</div><div class="v" id="uptime">–</div><div class="d" id="interval-sub">&nbsp;</div></div>
+            </div>
+
+            <!-- Order emails the parser could not read: never silently dropped -->
+            <div id="unparsed-box" hidden>
+                <div class="section-head"><h2>Email đơn Etsy không đọc được <span class="pill warn" id="unparsed-count"></span></h2></div>
+                <p class="unparsed-note">Các email này chưa thành đơn và chưa ghi Sheet. Mỗi lần poll sẽ tự đọc lại. Mở Gmail để kiểm tra: nếu là đơn thật thì nhập tay; nếu không phải đơn thì bấm «Bỏ qua».</p>
+                <div class="card unparsed-list" id="unparsed-list"></div>
+            </div>
+
+            <div class="section-head"><h2>Tài khoản Gmail</h2></div>
+            <div class="acc-grid" id="accounts-grid"><div class="loading-text">Đang tải…</div></div>
+
+            <div class="section-head">
+                <h2>Nhật ký</h2>
+                <button class="btn ghost small" type="button" id="btn-clear-logs">Xoá nhật ký</button>
+            </div>
+            <div class="log card" id="log-container"><div class="loading-text" style="padding:14px">Đang tải…</div></div>
+        </section>
+
+        <!-- ===== Config ===== -->
+        <section id="view-config" class="view" aria-labelledby="config-title" hidden>
+            <div class="page-head">
+                <div>
+                    <h1 id="config-title">Cấu hình</h1>
+                    <p class="page-sub">Tài khoản Gmail, Google Sheet đích và chu kỳ poll</p>
+                </div>
+                <div class="actions">
+                    <button class="btn primary" type="button" id="btn-add-account">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        Thêm tài khoản</button>
+                </div>
+            </div>
+
+            <div class="cfg-grid">
+                <div class="box card">
+                    <h2>Google credentials</h2>
+                    <p>File credentials.json dùng để xin quyền Gmail và Google Sheets.</p>
+                    <div class="row">
+                        <span id="cred-status-text"><span class="pill muted">Đang kiểm tra</span></span>
+                        <label class="btn" id="cred-upload-btn" for="cred-file-input">Tải lên credentials.json</label>
+                        <input type="file" id="cred-file-input" accept=".json" class="sr-only">
+                        <span id="cred-msg" role="status"></span>
+                    </div>
+                </div>
+                <div class="box card">
+                    <h2>Chu kỳ poll</h2>
+                    <p>Mỗi tài khoản đang bật tự poll sẽ được kiểm tra theo chu kỳ này.</p>
+                    <div class="row">
+                        <input type="number" id="polling-input" class="field" min="1" max="60" value="5" aria-label="Số phút giữa hai lần poll" style="width:84px">
+                        <span>phút</span>
+                        <button class="btn" type="button" id="btn-save-polling">Lưu</button>
+                        <span id="polling-msg" role="status"></span>
+                    </div>
+                </div>
+                <div class="box card full table-box">
+                    <table class="data-table">
+                        <thead><tr><th>Email</th><th>Sheet ID</th><th>Tab</th><th>Gmail query</th><th>Token</th><th><span class="sr-only">Thao tác</span></th></tr></thead>
+                        <tbody id="accounts-tbody"><tr><td colspan="6" class="loading-text">Đang tải…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- Add Account Modal -->
+<div class="modal-overlay" id="add-account-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
+    <form class="modal" id="add-account-form" novalidate>
+        <h3 id="add-title">Thêm tài khoản</h3>
+        <div class="form-group">
+            <label for="acc-email">Email Gmail</label>
+            <input type="email" class="field" id="acc-email" placeholder="ten@gmail.com" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="acc-sheet-id">Google Sheet ID</label>
+                <input type="text" class="field" id="acc-sheet-id" placeholder="Lấy từ URL của Sheet" required>
+            </div>
+            <div class="form-group">
+                <label for="acc-sheet-tab">Tab</label>
+                <input type="text" class="field" id="acc-sheet-tab" value="Sheet1">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="acc-query">Gmail query</label>
+            <input type="text" class="field mono" id="acc-query" placeholder="Để trống = query mặc định">
+        </div>
+        <span id="add-acc-msg" role="alert"></span>
+        <div class="modal-actions">
+            <button class="btn ghost" type="button" data-close="add-account-modal">Huỷ</button>
+            <button class="btn primary" type="submit">Thêm tài khoản</button>
+        </div>
+    </form>
+</div>
+
+<!-- Edit Account Modal -->
+<div class="modal-overlay" id="edit-account-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+    <form class="modal" id="edit-account-form" novalidate>
+        <h3 id="edit-title">Sửa tài khoản</h3>
+        <div class="form-group">
+            <label for="edit-email">Email</label>
+            <input type="text" class="field" id="edit-email" disabled>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="edit-sheet-id">Google Sheet ID</label>
+                <input type="text" class="field" id="edit-sheet-id">
+            </div>
+            <div class="form-group">
+                <label for="edit-sheet-tab">Tab</label>
+                <input type="text" class="field" id="edit-sheet-tab">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="edit-query">Gmail query</label>
+            <input type="text" class="field mono" id="edit-query">
+        </div>
+        <span id="edit-acc-msg" role="alert"></span>
+        <div class="modal-actions">
+            <button class="btn ghost" type="button" data-close="edit-account-modal">Huỷ</button>
+            <button class="btn primary" type="submit">Lưu thay đổi</button>
+        </div>
+    </form>
+</div>
+
+<!-- OAuth URL Modal -->
+<div class="modal-overlay" id="oauth-modal" role="dialog" aria-modal="true" aria-labelledby="oauth-title">
+    <div class="modal">
+        <h3 id="oauth-title">Xác thực OAuth</h3>
+        <p class="helper">Sao chép link bên dưới, mở trong trình duyệt đang đăng nhập tài khoản:</p>
+        <p id="oauth-email-display" class="oauth-email"></p>
+        <div class="auth-url-box mono" id="oauth-url-display"></div>
+        <div class="modal-actions">
+            <button class="btn ghost" type="button" data-close="oauth-modal">Đóng</button>
+            <button class="btn primary" type="button" id="btn-copy-oauth">Sao chép link</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/app-sidebar-accounts-and-mobile-menu.js?v=5"></script>
+<script src="/static/js/dashboard-overview-stats-accounts-logs.js?v=6"></script>
+<script src="/static/js/dashboard-config-accounts-and-settings-modals.js?v=5"></script>
+</body>
+</html>

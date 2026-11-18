@@ -1,0 +1,63 @@
+/* Overview + Config views (templates/index.html). Tokens come from style.css. */
+.view { display: flex; flex-direction: column; gap: 16px; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.stat .k { color: var(--muted); font-size: 12.5px; }
+.stat .v { font-size: 28px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; margin-top: 6px; line-height: 1.1; }
+.stat .d { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+.acc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.acc-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: transform .15s, box-shadow .15s; }
+.acc-card:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -18px var(--shadow); }
+.acc-card .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.acc-card .email { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.acc-card .nums { display: flex; gap: 24px; }
+.acc-card .big { font-size: 22px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.acc-card .muted { color: var(--muted); font-size: 12px; }
+.acc-card .links { display: flex; gap: 12px; }
+
+.log { overflow: hidden; }
+.log .ln { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-size: 12px; line-height: 1.55; }
+.log .ln:last-child { border-bottom: 0; }
+.log .msg { overflow-wrap: anywhere; color: var(--ink); }
+.lv { font-weight: 600; }
+.lv.INFO { color: var(--muted); }
+.lv.SUCCESS { color: var(--ok); }
+.lv.WARNING { color: var(--warn); }
+.lv.ERROR { color: var(--bad); }
+.log .empty { padding: 14px; color: var(--muted); font-family: var(--font); font-size: 13px; }
+
+.cfg-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.box { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.box.full { grid-column: 1 / -1; }
+.box h2 { font-size: 15px; }
+.box p { color: var(--muted); }
+.box .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+.table-box { padding: 0; overflow: auto; }
+.table-box td { white-space: nowrap; }
+.table-box .email { font-weight: 600; }
+.table-box .cut { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.table-box .row-actions { text-align: right; }
+.table-box .row-actions .btn + .btn { margin-left: 2px; }
+
+.oauth-email { color: var(--gold); font-weight: 700; margin: 8px 0; }
+.auth-url-box { background: var(--sunken); border-radius: 9px; padding: 12px; word-break: break-all; font-size: 12px; max-height: 140px; overflow-y: auto; user-select: all; }
+
+@media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) {
+    .cfg-grid { grid-template-columns: minmax(0, 1fr); }
+    .page-head .actions { width: 100%; }
+    .page-head .actions .btn { flex: 1; }
+}
+@media (max-width: 480px) { .stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .stat .v { font-size: 22px; } }
+
+/* Unreadable order emails (overview) */
+.unparsed-note { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+.unparsed-list { overflow: hidden; }
+.unparsed-list .item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
+.unparsed-list .item:last-child { border-bottom: 0; }
+.unparsed-list .info { min-width: 0; flex: 1; }
+.unparsed-list .subj { font-weight: 600; overflow-wrap: anywhere; }
+.unparsed-list .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.unparsed-list .acts { display: flex; gap: 12px; }

@@ -1,0 +1,36 @@
+# Fixed project + container name: running compose from any folder (or a git
+# worktree) reuses THIS container and volume instead of creating a new, empty one.
+name: appmail
+
+services:
+  app:
+    build: .
+    container_name: appmail
+    restart: unless-stopped        # come back after Docker Desktop / Windows restart
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:5000:5000"      # localhost only; change to "5000:5000" for LAN access
+    env_file: .env                 # SECRET_KEY, ADMIN_USER, ADMIN_PASS, PUBLIC_URL (not committed)
+    environment:
+      - DATA_DIR=/data
+      - PORT=5000
+    volumes:
+      - app-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5000/healthz', timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  app-data:
+    # Existing volume holding tokens/config/orders. external: `docker compose down -v`
+    # can never delete it. On a new machine: docker volume create appmail_app-data
+    external: true
+    name: appmail_app-data

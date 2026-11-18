@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập · AppMail</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/login.css?v=5">
+    <script src="/static/js/shared-ui-theme-toast-fetch-helpers.js?v=5"></script>
+</head>
+<body>
+<main class="login">
+    <section class="login-art" aria-label="AppMail">
+        <div class="brand"><span class="mark" aria-hidden="true">A</span><span>AppMail<small>Bảng điều khiển</small></span></div>
+        <div>
+            <h2>Đơn Etsy từ Gmail, vào thẳng <span>Google Sheet</span>.</h2>
+            <p>Tự đọc email đơn hàng của từng tài khoản Gmail, tách sản phẩm và địa chỉ, rồi ghi thành dòng trên Sheet.</p>
+        </div>
+        <div class="flow" aria-hidden="true"><i>Gmail</i>→<i>AppMail</i>→<i>Google Sheets</i></div>
+    </section>
+
+    <section class="login-form-side" style="position:relative">
+        <button class="icon-btn theme-toggle login-theme" type="button" onclick="toggleTheme()" aria-label="Đổi giao diện"></button>
+        <form class="login-form" method="POST" action="/login">
+            <h1>Đăng nhập</h1>
+            <p class="hint">Dùng tài khoản quản trị của AppMail.</p>
+            {% if error %}
+            <div class="login-error" role="alert">{{ error }}. Kiểm tra lại rồi thử lần nữa.</div>
+            {% endif %}
+            <div class="form-group">
+                <label for="username">Tên đăng nhập</label>
+                <input class="field" type="text" id="username" name="username" autocomplete="username" required value="{{ request.form.get('username', '') }}" {% if not error %}autofocus{% endif %}>
+            </div>
+            <div class="form-group">
+                <label for="password">Mật khẩu</label>
+                <div class="pw">
+                    <input class="field" type="password" id="password" name="password" autocomplete="current-password" required {% if error %}autofocus{% endif %}>
+                    <button type="button" id="pw-toggle" aria-controls="password" aria-pressed="false">Hiện</button>
+                </div>
+            </div>
+            <button type="submit" class="btn primary">Đăng nhập</button>
+        </form>
+    </section>
+</main>
+<script>
+document.getElementById('pw-toggle').addEventListener('click', function () {
+    const input = document.getElementById('password');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    this.textContent = show ? 'Ẩn' : 'Hiện';
+    this.setAttribute('aria-pressed', String(show));
+    input.focus();
+});
+</script>
+</body>
+</html>
