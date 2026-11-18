@@ -39,9 +39,20 @@
     }
 
     // ---------- rendering ----------
+    // Last failed Google Sheet write of an account (etsy status accounts[].sheet_error)
+    function sheetErrorBox(err) {
+        if (!err) return '';
+        const when = err.at ? new Date(err.at * 1000).toLocaleString('vi-VN') : '';
+        return `<div class="sheet-error" role="alert">
+            <div class="sheet-error-title">Không ghi được vào Sheet</div>
+            <div>${esc(err.message)}</div>
+            <div class="sheet-error-meta" title="${esc(err.raw)}">Tab «${esc(err.sheet_tab)}»${err.row ? ` · dòng ${esc(err.row)}` : ''}${when ? ` · ${esc(when)}` : ''}</div>
+        </div>`;
+    }
+
     let accountsSig = '';
-    function renderAccounts(accounts, ordersByEmail) {
-        const sig = JSON.stringify([accounts, ordersByEmail]);
+    function renderAccounts(accounts, ordersByEmail, sheetErrorByEmail) {
+        const sig = JSON.stringify([accounts, ordersByEmail, sheetErrorByEmail]);
         if (sig === accountsSig) return; // a re-render would reset a switch mid-click
         accountsSig = sig;
         const grid = $('accounts-grid');
@@ -57,6 +68,7 @@
                     <div><div class="big">${num(acc.total_emails)}</div><div class="muted">email đã xử lý</div></div>
                     ${orders == null ? '' : `<div><div class="big">${num(orders)}</div><div class="muted">đơn Etsy</div></div>`}
                 </div>
+                ${sheetErrorBox(sheetErrorByEmail[acc.email])}
                 <div class="row">
                     <label class="switch"><input type="checkbox" data-action="toggle-poll" ${acc.polling_enabled ? 'checked' : ''}><span class="track" aria-hidden="true"></span>Tự poll</label>
                     <span class="links">
@@ -146,9 +158,14 @@
             AppSidebar.setPollInterval(data.polling_interval);
 
             const ordersByEmail = {};
+            const sheetErrorByEmail = {};
             if (etsy) {
                 let total = 0;
-                (etsy.accounts || []).forEach(a => { ordersByEmail[a.email] = a.order_count; total += a.order_count || 0; });
+                (etsy.accounts || []).forEach(a => {
+                    ordersByEmail[a.email] = a.order_count;
+                    total += a.order_count || 0;
+                    if (a.sheet_error) sheetErrorByEmail[a.email] = a.sheet_error;
+                });
                 $('orders-count').textContent = num(total);
                 $('orders-sub').textContent = `trên ${(etsy.accounts || []).length} tài khoản`;
                 AppSidebar.renderAccounts((etsy.accounts || []).map(a => ({ email: a.email, on: a.etsy_polling_enabled, count: a.order_count })));
@@ -156,7 +173,7 @@
             } else {
                 AppSidebar.renderAccounts((data.accounts || []).map(a => ({ email: a.email, on: a.polling_enabled })));
             }
-            renderAccounts(data.accounts || [], ordersByEmail);
+            renderAccounts(data.accounts || [], ordersByEmail, sheetErrorByEmail);
             renderLogs(data.logs || []);
         } catch (e) {
             $('run-text').textContent = 'Không kết nối được tới server';

@@ -41,6 +41,7 @@ def poller(monkeypatch, tmp_path):
     monkeypatch.setattr(etsy_poller, "parse_etsy_sale_email", fake_parse)
     store.open_store(str(tmp_path / "etsy.db"))
     etsy_poller.etsy_last_poll = {}
+    monkeypatch.setattr(etsy_poller, "sheet_errors", {})
     yield etsy_poller
     store.close_store()
 
@@ -107,6 +108,20 @@ class TestSheetRetry:
         poller.poll_etsy(force=True)  # no new mail, but the pending order is retried
         assert sent == [["order-1"], ["order-1"]]
         assert poller.get_etsy_orders("seller@example.com")[0]["sheet_synced"] is True
+
+    def test_sheet_error_shown_on_account_then_cleared_on_success(self, poller, monkeypatch):
+        _gmail(monkeypatch, [{"messages": [{"id": "msg-1"}]}, {"messages": []}])
+        results = [{"written": 0, "skipped": 0, "error": "protected", "error_kind": "protected", "error_row": 7},
+                   {"written": 1, "skipped": 0}]
+        monkeypatch.setattr(poller, "sync_etsy_orders_to_sheet", lambda *a: results.pop(0))
+
+        poller.poll_etsy(force=True)
+        err = poller.get_etsy_status()[0]["sheet_error"]
+        assert err["kind"] == "protected" and err["row"] == 7
+        assert "dòng 7" in err["message"] and "seller@example.com" in err["message"]
+
+        poller.poll_etsy(force=True)  # retry succeeds -> card error disappears
+        assert poller.get_etsy_status()[0]["sheet_error"] is None
 
     def test_legacy_orders_without_flag_are_not_resent(self, poller, monkeypatch):
         _gmail(monkeypatch, [{"messages": []}])

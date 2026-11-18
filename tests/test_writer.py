@@ -1,8 +1,10 @@
 """Tests for writer.py Etsy sheet writing: row 1 untouched, data only in A..S."""
 from unittest.mock import MagicMock, patch
 
+import gspread
 import pytest
 
+from sheet_write_error_explainer import classify_sheet_error, describe_sheet_error
 from writer import (
     ETSY_HEADER_ROW,
     _ensure_header_row,
@@ -161,6 +163,44 @@ class TestWriteOrders:
             result = sync_etsy_orders_to_sheet(MagicMock(), "sid", "Order", [_order()])
         assert result["written"] == 0
         assert "error" in result
+
+    def test_insert_error_log_names_sheet_tab_and_row(self, caplog):
+        ws = _mock_worksheet(SELLER_HEADER)
+        ws.insert_rows.side_effect = Exception("protected cell")
+        with _patch_client(ws), caplog.at_level("ERROR", logger="writer"):
+            sync_etsy_orders_to_sheet(MagicMock(), "sid-123", "Order", [_order()])
+        msg = caplog.records[-1].getMessage()
+        assert "sid-123" in msg and "'Order'" in msg and "dong 2" in msg and "protected cell" in msg
+
+    def test_insert_error_result_has_kind_and_row(self):
+        ws = _mock_worksheet(SELLER_HEADER)
+        ws.insert_rows.side_effect = _api_error(400, "Bạn đang cố gắng chỉnh sửa ô hoặc đối tượng được bảo vệ.")
+        with _patch_client(ws):
+            result = sync_etsy_orders_to_sheet(MagicMock(), "sid", "Order", [_order()])
+        assert result["error_kind"] == "protected"
+        assert result["error_row"] == 2
+
+
+def _api_error(code, message):
+    response = MagicMock()
+    response.json.return_value = {"error": {"code": code, "message": message}}
+    return gspread.exceptions.APIError(response)
+
+
+class TestSheetErrorExplainer:
+    @pytest.mark.parametrize("exc, kind", [
+        (_api_error(400, "Invalid requests[0].insertDimension: You are trying to edit a protected cell"), "protected"),
+        (_api_error(400, "Bạn đang cố gắng chỉnh sửa ô hoặc đối tượng được bảo vệ."), "protected"),
+        (_api_error(403, "The caller does not have permission"), "no_permission"),
+        (gspread.exceptions.WorksheetNotFound("Order"), "not_found"),
+        (Exception("quota"), "other"),
+    ])
+    def test_classify(self, exc, kind):
+        assert classify_sheet_error(exc) == kind
+
+    def test_protected_message_names_tab_row_and_email(self):
+        msg = describe_sheet_error("protected", "a@gmail.com", "Order", 1234)
+        assert "«Order»" in msg and "dòng 1234" in msg and "a@gmail.com" in msg
 
 
 class TestColumnReads:

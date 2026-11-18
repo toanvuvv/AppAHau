@@ -40,6 +40,7 @@ import etsy_sqlite_order_store as store
 import etsy_sqlite_order_list_query as order_query
 from etsy_polling_heartbeat_watchdog import mark_poll_finished, mark_poll_started, mark_tick
 from writer import sync_etsy_orders_to_sheet
+from sheet_write_error_explainer import OTHER as OTHER_SHEET_ERROR, describe_sheet_error
 
 # --- Constants ---
 DEFAULT_ETSY_QUERY = (
@@ -70,6 +71,12 @@ _poll_mutex = threading.Lock()
 # Small in-memory state (orders + processed IDs are in SQLite)
 etsy_last_poll = {}    # {email: epoch_int} -- start time of last successful Gmail listing
 polling_enabled = True  # Global toggle from dashboard
+
+# Last failed Google Sheet write per account, shown on the account card until
+# a later write to that account succeeds. {email: {message, kind, sheet_id,
+# sheet_tab, row, raw, at}}. In memory only: a still-broken sheet is reported
+# again by the next poll/sync (its orders stay sheet_synced=0 and are retried).
+sheet_errors = {}
 
 # Bumped on every orders mutation; the UI reloads the order list only when it
 # changes. Seeded with the clock so a restarted worker never repeats a version.
@@ -172,6 +179,22 @@ def _mark_orders_synced(email_addr, order_ids):
         _bump_orders_version()
 
 
+def _record_sheet_result(email_addr, sheet_id, sheet_tab, result):
+    """Remember (or clear) the account's Sheet write error for the dashboard card."""
+    if not result.get("error"):
+        with _lock:
+            sheet_errors.pop(email_addr, None)
+        return
+    kind = result.get("error_kind", OTHER_SHEET_ERROR)
+    row = result.get("error_row")
+    with _lock:
+        sheet_errors[email_addr] = {
+            "message": describe_sheet_error(kind, email_addr, sheet_tab, row, result["error"]),
+            "kind": kind, "sheet_id": sheet_id, "sheet_tab": sheet_tab, "row": row,
+            "raw": result["error"], "at": time.time(),
+        }
+
+
 def _sync_pending_orders(email_addr, creds, sheet_id, sheet_tab):
     """Write every order still marked sheet_synced=False (new + earlier failures).
 
@@ -184,8 +207,10 @@ def _sync_pending_orders(email_addr, creds, sheet_id, sheet_tab):
         return {"written": 0, "skipped": 0}
 
     result = sync_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, pending)
+    _record_sheet_result(email_addr, sheet_id, sheet_tab, result)
     if result.get("error"):
-        logger.error(f"[Etsy][{email_addr}] Ghi Sheet loi, {len(pending)} don se ghi lai o chu ky sau: {result['error']}")
+        logger.error(f"[Etsy][{email_addr}] Ghi Sheet {sheet_id} | tab '{sheet_tab}' loi, "
+                     f"{len(pending)} don se ghi lai o chu ky sau: {result['error']}")
         return result
 
     _mark_orders_synced(email_addr, {o["order_id"] for o in pending})
@@ -221,11 +246,16 @@ def sync_orders_to_sheet(account_email=None):
             errors.append(f"{email}: token khong hop le")
             continue
 
-        result = sync_etsy_orders_to_sheet(creds, sheet_id, acc.get("sheet_tab", "Sheet1"), account_orders)
+        sheet_tab = acc.get("sheet_tab", "Sheet1")
+        logger.info(f"[Sync][{email}] Bat dau sync {len(account_orders)} don -> Sheet {sheet_id} | tab '{sheet_tab}'")
+        result = sync_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, account_orders)
+        _record_sheet_result(email, sheet_id, sheet_tab, result)
         total_written += result.get("written", 0)
         total_skipped += result.get("skipped", 0)
         if result.get("error"):
             errors.append(f"{email}: {result['error']}")
+            logger.error(f"[Sync][{email}] Ghi Sheet {sheet_id} | tab '{sheet_tab}' LOI "
+                         f"(written={result.get('written')}): {result['error']}")
         else:
             _mark_orders_synced(email, {o["order_id"] for o in account_orders})
         logger.info(f"[Sync][{email}] written={result.get('written')}, skipped={result.get('skipped')}")
@@ -672,6 +702,7 @@ def get_etsy_status(config=None):
             "etsy_polling_enabled": acc.get("etsy_polling_enabled", False),
             "order_count": store.count_orders(email),
             "unparsed": store.list_unparsed(email),
+            "sheet_error": sheet_errors.get(email),
             "etsy_query": acc.get("etsy_query", DEFAULT_ETSY_QUERY),
         })
     return statuses

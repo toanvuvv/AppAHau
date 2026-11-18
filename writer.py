@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 import gspread
 
+from sheet_write_error_explainer import classify_sheet_error
+
 NY_TZ = ZoneInfo("America/New_York")
 
 # (connect, read) seconds. gspread has no timeout by default, so a hung
@@ -113,6 +115,45 @@ def _open_worksheet(creds, sheet_id, sheet_tab):
     return client.open_by_key(sheet_id).worksheet(sheet_tab)
 
 
+def _sheet_label(sheet_id, sheet_tab):
+    """Log prefix naming the target sheet + tab, so errors say WHERE they happened."""
+    return f"[Sheet {sheet_id} | tab '{sheet_tab}']"
+
+
+# Log insert progress every N position groups (each group = 2 API calls), so a
+# long sync shows it is still moving instead of looking frozen.
+_INSERT_PROGRESS_EVERY = 25
+
+
+def _insert_position_groups(worksheet, position_groups, label):
+    """Insert row groups bottom-to-top (so earlier row numbers stay valid).
+
+    Returns (rows_written, failure) where failure is None or
+    {"error", "error_kind", "error_row"}. Stops at the first failure and names
+    the sheet row it was inserting at -- a protected range there is the usual
+    cause of "insertDimension: protected cell" errors.
+    """
+    total_groups = len(position_groups)
+    total_rows = sum(len(rows) for rows in position_groups.values())
+    if total_groups > _INSERT_PROGRESS_EVERY:
+        logger.info(f"{label} Chen {total_rows} dong vao {total_groups} vi tri khac nhau "
+                    f"(moi vi tri 2 request, co the mat vai phut)")
+
+    written = 0
+    for done, row_num in enumerate(sorted(position_groups.keys(), reverse=True), start=1):
+        rows = position_groups[row_num]
+        try:
+            worksheet.insert_rows(rows, row=row_num, value_input_option="USER_ENTERED")
+        except Exception as e:
+            logger.error(f"{label} Loi ghi orders tai dong {row_num} ({len(rows)} dong, "
+                         f"vi tri {done}/{total_groups}, da ghi {written} dong truoc do): {e}")
+            return written, {"error": str(e), "error_kind": classify_sheet_error(e), "error_row": row_num}
+        written += len(rows)
+        if total_groups > _INSERT_PROGRESS_EVERY and done % _INSERT_PROGRESS_EVERY == 0:
+            logger.info(f"{label} Tien do chen: {done}/{total_groups} vi tri, {written}/{total_rows} dong")
+    return written, None
+
+
 def write_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, orders):
     """
     Write Etsy orders to a Google Sheet. One row per item.
@@ -129,16 +170,17 @@ def write_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, orders):
     if not orders:
         return 0
 
+    label = _sheet_label(sheet_id, sheet_tab)
     try:
         worksheet = _open_worksheet(creds, sheet_id, sheet_tab)
     except Exception as e:
-        logger.error(f"Loi mo Google Sheet '{sheet_id}' tab '{sheet_tab}': {e}")
+        logger.error(f"{label} Loi mo Google Sheet: {e}")
         return 0
 
     try:
         _ensure_header_row(worksheet)
     except Exception as e:
-        logger.error(f"Loi doc Sheet: {e}")
+        logger.error(f"{label} Loi doc Sheet: {e}")
         return 0
 
     # Read existing dates for position-aware insertion
@@ -162,15 +204,7 @@ def write_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, orders):
     if not position_groups:
         return 0
 
-    count = 0
-    try:
-        # Insert from bottom to top to avoid row offset issues
-        for row_num in sorted(position_groups.keys(), reverse=True):
-            rows = position_groups[row_num]
-            worksheet.insert_rows(rows, row=row_num, value_input_option="USER_ENTERED")
-            count += len(rows)
-    except Exception as e:
-        logger.error(f"Loi ghi orders: {e}")
+    count, _ = _insert_position_groups(worksheet, position_groups, label)
 
     if count > 0:
         highlight_duplicate_addresses(worksheet, {str(o.get("order_id", "")).strip() for o in orders})
@@ -187,28 +221,30 @@ def sync_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, orders):
 
     Returns:
         dict: {"written": int, "skipped": int} plus "error": str when the
-        sheet could not be opened/read or an insert failed. Callers must treat
-        any "error" as "not fully synced" and retry later.
+        sheet could not be opened/read or an insert failed, with "error_kind"
+        (sheet_write_error_explainer kinds) and "error_row" (insert failures).
+        Callers must treat any "error" as "not fully synced" and retry later.
     """
     if not orders:
         return {"written": 0, "skipped": 0}
 
+    label = _sheet_label(sheet_id, sheet_tab)
     try:
         worksheet = _open_worksheet(creds, sheet_id, sheet_tab)
     except Exception as e:
-        logger.error(f"Loi mo Google Sheet '{sheet_id}' tab '{sheet_tab}': {e}")
-        return {"written": 0, "skipped": 0, "error": str(e)}
+        logger.error(f"{label} Loi mo Google Sheet: {e}")
+        return {"written": 0, "skipped": 0, "error": str(e), "error_kind": classify_sheet_error(e)}
 
     try:
         _ensure_header_row(worksheet)
         # Only Date (A) and Order ID (D) are needed: dedupe + insert position
         existing = _read_data_columns(worksheet, (0, 3))
     except Exception as e:
-        logger.error(f"Loi doc Sheet: {e}")
-        return {"written": 0, "skipped": 0, "error": str(e)}
+        logger.error(f"{label} Loi doc Sheet: {e}")
+        return {"written": 0, "skipped": 0, "error": str(e), "error_kind": classify_sheet_error(e)}
 
     existing_ids = {row[3].strip() for row in existing if row[3].strip()}
-    logger.info(f"Sheet co {len(existing_ids)} order IDs")
+    logger.info(f"{label} Sheet co {len(existing_ids)} order IDs")
 
     # Read existing dates for position-aware insertion
     existing_ts = [_parse_sheet_date(row[0]) for row in existing]
@@ -233,24 +269,14 @@ def sync_etsy_orders_to_sheet(creds, sheet_id, sheet_tab, orders):
         existing_ids.add(order_id)
         new_order_ids.add(order_id)
 
-    written = 0
-    insert_error = None
-    if position_groups:
-        try:
-            for row_num in sorted(position_groups.keys(), reverse=True):
-                rows = position_groups[row_num]
-                worksheet.insert_rows(rows, row=row_num, value_input_option="USER_ENTERED")
-                written += len(rows)
-        except Exception as e:
-            insert_error = str(e)
-            logger.error(f"Loi ghi orders: {e}")
+    written, failure = _insert_position_groups(worksheet, position_groups, label)
 
     if written > 0:
         highlight_duplicate_addresses(worksheet, new_order_ids)
 
     result = {"written": written, "skipped": skipped}
-    if insert_error:
-        result["error"] = insert_error
+    if failure:
+        result.update(failure)
     return result
 
 
@@ -317,7 +343,7 @@ def highlight_duplicate_addresses(worksheet, new_order_ids=None):
         # Order ID (D) + Buyer Name / Address 1 / Address 2 (L, M, N) only
         data_rows = _read_data_columns(worksheet, (3,) + _KEY_COLS)
     except Exception as e:
-        logger.error(f"Loi doc Sheet khi highlight: {e}")
+        logger.error(f"[tab '{worksheet.title}'] Loi doc Sheet khi highlight: {e}")
         return
 
     if not data_rows:
@@ -353,9 +379,9 @@ def highlight_duplicate_addresses(worksheet, new_order_ids=None):
 
     try:
         worksheet.spreadsheet.batch_update({"requests": requests})
-        logger.info(f"Highlight xong: {dup_groups} nhom trung dia chi ({len(requests)} dong)")
+        logger.info(f"[tab '{worksheet.title}'] Highlight xong: {dup_groups} nhom trung dia chi ({len(requests)} dong)")
     except Exception as e:
-        logger.error(f"Loi highlight duplicate addresses: {e}")
+        logger.error(f"[tab '{worksheet.title}'] Loi highlight duplicate addresses: {e}")
 
 
 def _convert_date_to_ny(order):
